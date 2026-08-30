@@ -1,5 +1,7 @@
 # dep-graph-toolkit
 
+![dep-graph-toolkit](.github/social-preview.png)
+
 Codebase intelligence for AI coding agents working on repos far too large to fit in a
 context window: a SQLite-backed dependency graph with **PageRank importance**, **git
 co-change history**, and **blast-radius** computation.
