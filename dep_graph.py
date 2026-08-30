@@ -35,8 +35,13 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-DB_DIR = os.path.expanduser("~/.claude/data")
-DB_PATH = os.path.join(DB_DIR, "dep_graph.sqlite")
+# Where the graph lives. Override with DEP_GRAPH_DB to keep separate graphs for
+# separate projects (or to avoid clobbering an existing one), e.g.
+#   DEP_GRAPH_DB=./mygraph.sqlite python dep_graph.py index .
+DB_PATH = os.environ.get("DEP_GRAPH_DB") or os.path.join(
+    os.path.expanduser("~/.dep-graph"), "dep_graph.sqlite"
+)
+DB_DIR = os.path.dirname(DB_PATH) or "."
 
 # File extensions we care about
 LANG_MAP = {
@@ -196,17 +201,35 @@ def parse_vue_imports(content, rel_path):
     return parse_ts_imports(script_match.group(1), rel_path)
 
 
+def _py_module_to_path(module):
+    """`.models` -> `./models`, `..utils.io` -> `../utils/io`, `a.b` -> `a/b`.
+
+    Leading dots are PEP 328 relative-import levels and must survive as path
+    prefixes. The old code ran `.replace(".", "/")` over the whole string, so
+    `.models` became `/models` — which no longer starts with "." and therefore
+    never reached the relative branch of resolve_import_path. Every relative
+    import in every Python project was silently dropped (`requests`: 3 edges
+    across 37 files, and `blast` reported its most-imported module as a leaf).
+    """
+    n = len(module) - len(module.lstrip("."))
+    rest = module[n:].replace(".", "/")
+    if n == 0:
+        return rest
+    prefix = "./" if n == 1 else "../" * (n - 1)
+    return prefix + rest if rest else prefix.rstrip("/")
+
+
 def parse_python_imports(content, rel_path):
     """Extract Python import/from statements."""
     imports = []
-    # from foo.bar import baz, qux
+    # from foo.bar import baz, qux   /   from .models import Response
     for m in re.finditer(r'^\s*from\s+([\w.]+)\s+import\s+(.+)', content, re.MULTILINE):
         module = m.group(1)
         names = m.group(2)
         for name in names.split(","):
-            name = name.strip().split(" as ")[0].strip()
+            name = name.strip().split(" as ")[0].strip().rstrip(")").strip()
             if name and name != "*":
-                imports.append((module.replace(".", "/"), name, m.start()))
+                imports.append((_py_module_to_path(module), name, m.start()))
     # import foo.bar
     for m in re.finditer(r'^\s*import\s+([\w.]+)', content, re.MULTILINE):
         module = m.group(1)
@@ -327,6 +350,8 @@ def resolve_import_path(module_path, from_rel_path, all_rel_paths):
         candidate_base + "/index.tsx",
         candidate_base + "/index.js",
         candidate_base + "/index.jsx",
+        # a Python package directory resolves to its __init__
+        candidate_base + "/__init__.py",
     ]
 
     rel_set = set(all_rel_paths)

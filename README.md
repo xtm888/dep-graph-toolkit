@@ -28,7 +28,53 @@ cd dep-graph-toolkit
 python dep_graph.py index /path/to/your/project
 ```
 
-The graph is stored in `~/.claude/data/dep_graph.sqlite`.
+The graph is stored in `~/.dep-graph/dep_graph.sqlite`. Set `DEP_GRAPH_DB` to keep a
+separate graph per project:
+
+```bash
+DEP_GRAPH_DB=./mygraph.sqlite python dep_graph.py index .
+```
+
+## Example
+
+Indexing [psf/requests](https://github.com/psf/requests) — 37 files, 6,493 commits:
+
+```
+$ python dep_graph.py rank --top 8
+
+Rank  PageRank   Symbols  Lang         File
+────────────────────────────────────────────────────────────────────────────
+1     1.0000     1        python       src/requests/compat.py
+2     0.5484     5        python       src/requests/models.py
+3     0.3929     2        python       src/requests/structures.py
+4     0.3877     2        python       src/requests/__init__.py
+5     0.2552     14       python       src/requests/cookies.py
+6     0.2547     3        python       src/requests/_internal_utils.py
+7     0.2372     3        python       tests/testserver/server.py
+8     0.2349     25       python       src/requests/exceptions.py
+```
+
+`compat.py` ranks first because nearly every module in the package reaches it — which is
+exactly the file you want to be careful with.
+
+```
+$ python dep_graph.py blast src/requests/models.py
+
+Blast radius for: src/requests/models.py
+
+  11 files affected:
+
+  Depth   PageRank   File
+  ────────────────────────────────────────────────────────────
+  1       0.3877       → src/requests/__init__.py
+  1       0.2552       → src/requests/cookies.py
+  1       0.2349       → src/requests/exceptions.py
+  1       0.2023       → src/requests/auth.py
+  1       0.1959       → src/requests/utils.py
+  1       0.1503       → src/requests/api.py
+  1       0.1503       → src/requests/sessions.py
+  1       0.1476       → src/requests/adapters.py
+```
 
 ## Use
 
